@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Moshi Voice Chatbot</title>
+  <link rel="icon" href="data:," />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -17,12 +18,13 @@
 
     <p class="status-text" id="statusText">Click to connect</p>
 
-    <button id="connectBtn" onclick="toggleConnect()">Connect</button>
+    <button id="connectBtn">Connect</button>
+    <p class="stats" id="stats"></p>
 
     <div class="transcript" id="transcript">
-      <p class="placeholder">Conversation will appear here...</p>
+      <p class="placeholder">Moshi&rsquo;s side of the conversation will appear here. Headphones work best.</p>
     </div>
   </div>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
