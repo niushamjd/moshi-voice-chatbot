@@ -5,7 +5,7 @@ import pytest
 
 from backend.audio_utils import SAMPLE_RATE, MessageKind, encode_message
 from backend.echo_runner import ECHO_TEXT, EchoRunner
-from backend.server import make_runner, parse_args
+from backend.server import browser_url, make_runner, parse_args
 
 from .conftest import tone
 
@@ -130,3 +130,13 @@ def test_make_runner_echo_needs_no_mlx():
     assert isinstance(runner, EchoRunner)
     assert runner.max_steps == 60 * 12.5
     assert SAMPLE_RATE == 24000
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::"])
+def test_browser_url_avoids_bind_all_address(host):
+    # WebCodecs only exists in secure contexts, and http://0.0.0.0 isn't one.
+    assert browser_url(host, 8998) == "http://localhost:8998"
+
+
+def test_browser_url_keeps_a_real_host():
+    assert browser_url("192.168.1.5", 9000) == "http://192.168.1.5:9000"
