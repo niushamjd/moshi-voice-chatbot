@@ -158,10 +158,22 @@ def browser_url(host: str, port: int) -> str:
     return f"http://{host}:{port}"
 
 
+def env_port(default: int = 8998) -> int:
+    value = os.environ.get("MOSHI_PORT", str(default))
+    try:
+        return int(value)
+    except ValueError:
+        # Kubernetes sets MOSHI_PORT=tcp://<ip>:<port> for a Service named
+        # "moshi" unless the pod has enableServiceLinks: false.
+        raise SystemExit(
+            f"MOSHI_PORT must be a port number, got {value!r} (on Kubernetes, set enableServiceLinks: false on the pod)"
+        ) from None
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--host", default=os.environ.get("MOSHI_HOST", "localhost"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("MOSHI_PORT", "8998")))
+    parser.add_argument("--port", type=int, default=env_port())
     parser.add_argument(
         "--backend",
         choices=["moshi", "echo"],

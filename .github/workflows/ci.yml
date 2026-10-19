@@ -27,6 +27,13 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: ruff check --output-format=github .
       - run: ruff format --check .
+      - name: Validate Kubernetes manifests
+        env:
+          KUBECONFORM_VERSION: v0.8.0
+        run: |
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar xz -C /usr/local/bin kubeconform
+          kubectl kustomize k8s | kubeconform -strict -summary
 
   test:
     runs-on: ubuntu-latest
@@ -131,3 +138,42 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
+
+  k8s-e2e:
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: moshi
+
+      # Same script as on a laptop: it reuses the cluster above, builds the
+      # image, loads it into kind, applies k8s/ and waits for the rollout.
+      - name: Deploy to kind
+        run: ./scripts/kind-up.sh
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-server.txt
+
+      - name: Smoke test through the Service
+        run: |
+          kubectl -n moshi port-forward svc/moshi 8998:80 > port-forward.log 2>&1 &
+          for _ in $(seq 30); do
+            if curl -sf http://localhost:8998/healthz; then break; fi
+            sleep 1
+          done
+          python scripts/smoke_test.py --seconds 3
+
+      - name: Dump cluster state
+        if: ${{ failure() }}
+        run: |
+          kubectl -n moshi get all -o wide || true
+          kubectl -n moshi describe deployment,pods || true
+          kubectl -n moshi logs deployment/moshi --all-containers --tail=200 || true
+          kubectl -n moshi logs deployment/moshi --all-containers --previous --tail=200 || true
+          cat port-forward.log || true

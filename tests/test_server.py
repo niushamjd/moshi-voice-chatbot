@@ -120,6 +120,13 @@ def test_env_vars_set_defaults(monkeypatch):
     assert (args.host, args.port, args.backend) == ("0.0.0.0", 9000, "echo")
 
 
+def test_kubernetes_service_link_port_gives_a_clear_error(monkeypatch):
+    # What Kubernetes injects for a Service named "moshi" when service links are on.
+    monkeypatch.setenv("MOSHI_PORT", "tcp://10.96.0.1:80")
+    with pytest.raises(SystemExit, match="enableServiceLinks"):
+        parse_args([])
+
+
 def test_flags_override_env_vars(monkeypatch):
     monkeypatch.setenv("MOSHI_BACKEND", "echo")
     assert parse_args(["--backend", "moshi"]).backend == "moshi"
