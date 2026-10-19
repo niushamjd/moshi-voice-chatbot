@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moshi
+  labels:
+    app.kubernetes.io/name: moshi
+spec:
+  # One replica on purpose: each server process handles one conversation at a
+  # time (a second client gets "server busy"), and a conversation is a single
+  # long-lived WebSocket. Scaling out would need session-sticky routing so a
+  # client stays on its pod, which is out of scope here.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: moshi
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: moshi
+    spec:
+      automountServiceAccountToken: false
+      # Without this, Kubernetes injects Docker-links-style variables for every
+      # Service in the namespace. For the Service "moshi" that includes
+      # MOSHI_PORT=tcp://<ip>:80, which clobbers our own MOSHI_PORT.
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: moshi
+          # The tag comes from the `images:` override in kustomization.yaml.
+          image: ghcr.io/niushamjd/moshi-voice-chatbot
+          imagePullPolicy: IfNotPresent
+          env:
+            # MLX only runs on Apple Silicon, so the cluster runs the echo backend.
+            - name: MOSHI_BACKEND
+              value: echo
+            - name: MOSHI_PORT
+              value: "8998"
+          ports:
+            - name: http
+              containerPort: 8998
+          # /healthz returns 200 even while a call is active (tested in
+          # tests/test_server.py), so probes never restart a pod mid-call.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          # Measured: ~31 MiB and ~7% of a core during an echo call.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
