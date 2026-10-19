@@ -53,6 +53,17 @@ python -m moshi_mlx.local_web -q 4 --hf-repo kyutai/moshika-mlx-q4 --static fron
 
 ## Testing
 
+Without a Mac or the model, run the server with the echo backend, which sends your audio straight back over the same protocol:
+
+```bash
+pip install -r requirements-dev.txt
+python -m backend.server --backend echo   # or MOSHI_BACKEND=echo; also MOSHI_HOST, MOSHI_PORT
+pytest                                    # unit + WebSocket integration tests
+ruff check . && ruff format --check .
+```
+
+`GET /healthz` returns 200 with `{"status", "backend", "busy"}`, including during a conversation.
+
 `scripts/smoke_test.py` streams a WAV file to a running server in real time and checks what comes back:
 
 ```bash
