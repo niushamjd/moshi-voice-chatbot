@@ -11,3 +11,7 @@ node_modules/
 .ruff_cache/
 reports/
 *.wav
+
+# local notes for Claude Code
+CLAUDE.md
+PLAN.md

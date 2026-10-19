@@ -22,7 +22,14 @@ If `ci/pipeline` isn't merged into `main` yet, merge it first.
 
 ---
 
-## Step 2: Docker image, built and pushed by the pipeline
+## Step 2: Docker image, built and pushed by the pipeline (done, branch `feat/docker`)
+- [x] `requirements-server.txt`; `requirements-dev.txt` includes it
+- [x] `Dockerfile` (two-stage, non-root UID 10001, stdlib `HEALTHCHECK`, OCI labels), `.dockerignore`
+- [x] `docker` job: build with `load: true` → run → `/healthz` → `smoke_test.py --seconds 3` → push to ghcr only on `main`/`v*`
+- [x] Local: `docker build` + `docker run` works, `/healthz` answers, container reports `healthy`, smoke test passes (arm64 native and amd64 emulated)
+- [ ] Browser UI echoes a real voice through the container (manual check with a mic)
+- [ ] On GitHub: a PR builds and smoke-tests without pushing; a push to `main` publishes the package (needs the branch pushed)
+
 Branch: `feat/docker`
 
 **Files**
@@ -51,6 +58,12 @@ Branch: `feat/docker`
 - The image is under ~250 MB. Record the actual size in Notes.
 
 Notes:
+- Image size: **196 MB on linux/amd64** (what CI publishes), **217 MB on linux/arm64** (local M1 build). The first single-stage attempt was 284 MB on amd64 and 316 MB on arm64.
+- `sphn` only publishes Linux wheels for x86_64, so on an M1 `pip install` fell back to building from source and failed with `linker 'cc' not found`. Fix: a build stage with `build-essential`/`cmake`. maturin downloads Rust by itself.
+- Next, the Opus copy bundled with `sphn` (via `audiopus_sys`) failed under CMake 4 with "Compatibility with CMake < 3.5 has been removed". Fix: `CMAKE_POLICY_VERSION_MINIMUM=3.5` in the build stage only.
+- Size: `sphn`'s extension `.so` is ~80 MB unstripped, both when compiled locally and in the official PyPI wheel. The build stage installs into `/install`, runs `strip --strip-unneeded` on every `.so` and the runtime stage copies `/install`, which brings `sphn` down to ~3.5 MB. So multi-stage clearly pays here: it keeps the toolchain out and lets us strip.
+- The CI push step re-runs `build-push-action` with `push: true`. It hits the GHA layer cache from the smoke-test build, so it doesn't rebuild, and it only runs after the smoke test passes. A `load: true` image can't be pushed by buildx directly.
+- No Python 3.13 locally; the 3.13 leg is only checked in CI.
 
 ---
 
