@@ -58,7 +58,10 @@ def urllib_transport(url: str, headers: dict[str, str]) -> Response:
         return Response(e.code, {k.lower(): v for k, v in e.headers.items()}, e.read())
 
 
-def resolve_token(env=os.environ, run=subprocess.run) -> str:
+def resolve_token(env=None, run=None) -> str:
+    # Looked up at call time (not as defaults) so tests can patch them.
+    env = os.environ if env is None else env
+    run = subprocess.run if run is None else run
     for name in ("GITHUB_TOKEN", "GH_TOKEN"):
         if env.get(name):
             return env[name]
@@ -123,9 +126,11 @@ class GitHubClient:
         self.requests = 0
         self._warned_low = False
 
-    def _get(self, url: str, accept: str = "application/vnd.github+json") -> Response:
+    def _get(self, url: str) -> Response:
         headers = {
-            "Accept": accept,
+            # Also for artifact downloads: that endpoint answers 415 to
+            # `Accept: application/zip` and redirects to the zip anyway.
+            "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {self.token}",
             "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "ci-insights",
@@ -207,7 +212,7 @@ class GitHubClient:
         cached = self.cache.get(key)
         if cached is not None:
             return cached
-        data = self._get(artifact["archive_download_url"], accept="application/zip").body
+        data = self._get(artifact["archive_download_url"]).body
         self.cache.put(key, data)
         return data
 

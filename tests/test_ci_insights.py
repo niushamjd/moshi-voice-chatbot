@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.ci_insights import cli
+from tools.ci_insights import cli, github
 from tools.ci_insights.github import Cache, GitHubClient, GitHubError, RateLimitError, Response, resolve_token
 from tools.ci_insights.junit import FAILED, PASSED, SKIPPED, TestCase, parse_junit_xml, parse_junit_zip
 from tools.ci_insights.render import fmt_duration, render_markdown, render_table
@@ -38,6 +38,10 @@ class FakeGitHub:
             if "Authorization" in headers:
                 return Response(400, {}, b"<Error>InvalidAuthenticationInfo</Error>")
             return Response(200, {}, (FIXTURES / f"artifact_{parts.path.rsplit('/', 1)[1]}.zip").read_bytes())
+        # Like the real API, every endpoint (artifact downloads included) only
+        # accepts the GitHub JSON media type.
+        if headers.get("Accept") != "application/vnd.github+json":
+            return Response(415, rate, b'{"message": "Unsupported \'Accept\' header"}')
         if url == PAGE_2:
             return self._file("runs_page2.json", rate)
         path = parts.path.removeprefix(f"/repos/{REPO}/actions/")
@@ -58,6 +62,16 @@ class FakeGitHub:
 
     def urls(self, needle: str) -> list[str]:
         return [url for url, _ in self.requests if needle in url]
+
+
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    """Fail loudly if anything reaches the real HTTP stack."""
+
+    def blocked(*args, **kwargs):
+        raise AssertionError("test tried to reach the network")
+
+    monkeypatch.setattr(github._opener, "open", blocked)
 
 
 @pytest.fixture
@@ -281,7 +295,7 @@ def test_empty_report_renders():
 
 
 @pytest.mark.parametrize(
-    ("seconds", "text"), [(None, "-"), (4.25, "4.2s"), (42, "42s"), (87, "1m 27s"), (3600, "60m 00s")]
+    ("seconds", "text"), [(None, "-"), (0.0123, "12ms"), (4.25, "4.2s"), (42, "42s"), (87, "1m 27s"), (3600, "60m 00s")]
 )
 def test_fmt_duration(seconds, text):
     assert fmt_duration(seconds) == text

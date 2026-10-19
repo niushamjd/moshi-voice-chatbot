@@ -95,6 +95,53 @@ GITHUB_TOKEN=... python -m tools.ci_insights --repo niushamjd/moshi-voice-chatbo
 
 It needs a token (`GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth token`) because GitHub only serves artifact downloads to authenticated requests. Completed runs are cached in `~/.cache/ci-insights/` (`--no-cache` to skip). The `CI insights` workflow runs it every Monday and on demand, and writes the report to the run summary.
 
+Example output (`--top 5`) on this repo, after a demo branch with one always-failing and one random test was pushed four times (it was never merged). The random test shows up as flaky on three commits, where it passed on one Python version and failed on the other:
+
+```
+ci-insights: niushamjd/moshi-voice-chatbot (ci.yml, branch: all)
+
+Builds
+------
+Metric                     Value
+Runs analysed              12
+Success rate               67%
+Conclusions                failure 4, success 8
+Duration median            2m 34s
+Duration p90               4m 37s
+Slowest run                5m 00s on fix/browser-url @ e612791 https://github.com/niushamjd/moshi-voice-chatbot/actions/runs/39287583697
+Runs without test reports  0
+Test executions            1184 (69 distinct tests)
+
+Median duration per job
+-----------------------
+Job          Median  Runs
+docker       41s     8
+k8s-e2e      1m 37s  4
+lint         17s     12
+test (3.12)  18s     12
+test (3.13)  18s     12
+
+Most failing tests
+------------------
+Test                                              Failures  Runs  Failure rate
+tests.test_demo_failures::test_demo_always_fails  8         8     100%
+tests.test_demo_failures::test_demo_flaky         3         8     38%
+
+Flaky tests (passed and failed on the same commit)
+--------------------------------------------------
+Test                                       Commits                    Failures  Runs
+tests.test_demo_failures::test_demo_flaky  01f4e2e, 51b4ba1, 9c1193f  3         8
+
+Slowest tests
+-------------
+Test                                                                           Median  Runs
+tests.test_server::test_opus_round_trip_echoes_audio_and_text                  521ms   24
+tests.test_server::test_ignores_messages_it_does_not_understand[client-text]   517ms   24
+tests.test_server::test_ignores_messages_it_does_not_understand[empty]         517ms   24
+tests.test_server::test_ignores_messages_it_does_not_understand[unknown-kind]  517ms   24
+tests.test_ci_insights::test_cli_reports_errors_with_exit_code_2               200ms   12
+```
+
 `GET /healthz` returns 200 with `{"status", "backend", "busy"}`, including during a conversation.
 
 `scripts/smoke_test.py` streams a WAV file to a running server in real time and checks what comes back:

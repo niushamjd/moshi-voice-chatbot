@@ -6,6 +6,8 @@ import json
 def fmt_duration(seconds: float | None) -> str:
     if seconds is None:
         return "-"
+    if seconds < 1:
+        return f"{seconds * 1000:.0f}ms"
     if seconds < 60:
         return f"{seconds:.1f}s" if seconds < 10 else f"{seconds:.0f}s"
     minutes, secs = divmod(round(seconds), 60)
