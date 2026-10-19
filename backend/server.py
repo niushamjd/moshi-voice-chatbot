@@ -150,6 +150,14 @@ def make_runner(backend: str, hf_repo: str, quantized: str, max_minutes: float):
     )
 
 
+def browser_url(host: str, port: int) -> str:
+    # A bind-all address isn't a secure context, so browsers hide WebCodecs on
+    # it; point people at localhost instead.
+    if host in ("0.0.0.0", "::", ""):
+        host = "localhost"
+    return f"http://{host}:{port}"
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--host", default=os.environ.get("MOSHI_HOST", "localhost"))
@@ -176,7 +184,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     runner = make_runner(args.backend, args.hf_repo, args.quantized, args.max_minutes)
     app = build_app(runner, backend=args.backend)
-    log.info("open http://%s:%d in your browser (backend: %s)", args.host, args.port, args.backend)
+    log.info("open %s in your browser (backend: %s)", browser_url(args.host, args.port), args.backend)
     web.run_app(app, host=args.host, port=args.port, print=None)
 
 
