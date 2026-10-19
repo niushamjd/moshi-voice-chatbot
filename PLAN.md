@@ -8,8 +8,15 @@ Read `CLAUDE.md` first. Do the steps in order, one branch and one PR per step. E
 
 ## Step 1: CI (done, branch `ci/pipeline`)
 - [x] Echo backend, `build_app()`, `/healthz`, `MOSHI_*` env vars
-- [x] 26 pytest tests (unit + WebSocket integration), ruff config in `pyproject.toml`
+- [x] 28 pytest tests (unit + WebSocket integration), ruff config in `pyproject.toml`
 - [x] `.github/workflows/ci.yml`: lint job + test matrix (3.12, 3.13), JUnit report uploaded as artifact `junit-py<ver>`
+
+Notes:
+- The original `ci/pipeline` work only existed as a git bundle from another session that never reached this machine, so Step 1 was rebuilt from its summary. Lesson: a step isn't done until it's on a remote branch.
+- `venv/` (640 files), `.DS_Store`, an empty `.env` and a gitlink to a nested repo had been committed before `.gitignore` covered them; untracked with `git rm --cached`.
+- Garbage audio bytes put `sphn.OpusStreamReader` into a permanent error state and raised an uncaught `ValueError` in the handler. The server now catches it, sends an `ERROR` message and ends the session (no wire-protocol change).
+- `server.py` imported `moshi_runner` (and so MLX) at module load, which would break on Linux. The import is now lazy and only happens for `--backend moshi`.
+- Checked that the tests bite: making the echo return silence fails 2 tests; skipping the busy-flag reset fails 1.
 
 If `ci/pipeline` isn't merged into `main` yet, merge it first.
 
