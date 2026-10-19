@@ -2,14 +2,17 @@
 
 Run from the repository root:
 
-    python -m backend.server
+    python -m backend.server                 # real model (Apple Silicon only)
+    python -m backend.server --backend echo  # echoes audio back, runs anywhere
 
-then open http://localhost:8998.
+then open http://localhost:8998. Defaults can also come from the environment:
+MOSHI_HOST, MOSHI_PORT and MOSHI_BACKEND.
 """
 
 import argparse
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 import aiohttp
@@ -18,7 +21,6 @@ import sphn
 from aiohttp import web
 
 from .audio_utils import SAMPLE_RATE, MessageKind, PcmFramer, decode_message, encode_message
-from .moshi_runner import MoshiRunner
 
 log = logging.getLogger("moshi-server")
 
@@ -27,7 +29,7 @@ FRAME_RATE = 12.5
 
 
 class ChatServer:
-    def __init__(self, runner: MoshiRunner):
+    def __init__(self, runner):
         self.runner = runner
         # One model, one conversation at a time.
         self.busy = False
@@ -89,7 +91,14 @@ class ChatServer:
                 if kind != MessageKind.AUDIO:
                     log.warning("ignoring message kind %d from %s", kind, peer)
                     continue
-                pcm = opus_reader.append_bytes(payload)
+                try:
+                    pcm = opus_reader.append_bytes(payload)
+                except ValueError as e:
+                    # A corrupt Ogg stream can't be resynced, so end the session.
+                    log.warning("invalid audio stream from %s: %s", peer, e)
+                    await ws.send_bytes(encode_message(MessageKind.ERROR, f"invalid audio stream: {e}".encode()))
+                    await ws.close()
+                    break
                 for frame in framer.push(np.asarray(pcm)):
                     session.push_frame(frame)
         finally:
@@ -104,30 +113,70 @@ async def handle_index(_: web.Request) -> web.FileResponse:
     return web.FileResponse(FRONTEND_DIR / "index.html")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--host", default="localhost")
-    parser.add_argument("--port", type=int, default=8998)
-    parser.add_argument("--hf-repo", default="kyutai/moshika-mlx-q4",
-                        help="Hugging Face repo holding the Moshi MLX weights")
-    parser.add_argument("-q", "--quantized", choices=["4", "8", "bf16"], default="4",
-                        help="weight precision; must match the repo")
-    parser.add_argument("--max-minutes", type=float, default=10,
-                        help="maximum length of one conversation")
-    args = parser.parse_args()
+CHAT_KEY = web.AppKey("chat", ChatServer)
+BACKEND_KEY = web.AppKey("backend", str)
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    runner = MoshiRunner(
-        hf_repo=args.hf_repo,
-        quantized=None if args.quantized == "bf16" else int(args.quantized),
-        max_steps=int(args.max_minutes * 60 * FRAME_RATE),
-    )
 
+async def handle_healthz(request: web.Request) -> web.Response:
+    # Always 200, even mid-conversation: a busy server is healthy, and a probe
+    # that failed during calls would get the pod restarted mid-call.
+    return web.json_response({"status": "ok", "backend": request.app[BACKEND_KEY], "busy": request.app[CHAT_KEY].busy})
+
+
+def build_app(runner, backend: str = "moshi") -> web.Application:
     app = web.Application()
-    app.router.add_get("/api/chat", ChatServer(runner).handle_chat)
+    app[CHAT_KEY] = ChatServer(runner)
+    app[BACKEND_KEY] = backend
+    app.router.add_get("/api/chat", app[CHAT_KEY].handle_chat)
+    app.router.add_get("/healthz", handle_healthz)
     app.router.add_get("/", handle_index)
     app.router.add_static("/", FRONTEND_DIR)
-    log.info("open http://%s:%d in your browser", args.host, args.port)
+    return app
+
+
+def make_runner(backend: str, hf_repo: str, quantized: str, max_minutes: float):
+    max_steps = int(max_minutes * 60 * FRAME_RATE)
+    if backend == "echo":
+        from .echo_runner import EchoRunner
+
+        return EchoRunner(max_steps=max_steps)
+    # Imported lazily: it needs MLX, which only exists on Apple Silicon.
+    from .moshi_runner import MoshiRunner
+
+    return MoshiRunner(
+        hf_repo=hf_repo,
+        quantized=None if quantized == "bf16" else int(quantized),
+        max_steps=max_steps,
+    )
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--host", default=os.environ.get("MOSHI_HOST", "localhost"))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("MOSHI_PORT", "8998")))
+    parser.add_argument(
+        "--backend",
+        choices=["moshi", "echo"],
+        default=os.environ.get("MOSHI_BACKEND", "moshi"),
+        help="moshi runs the model; echo sends audio straight back (no MLX needed)",
+    )
+    parser.add_argument(
+        "--hf-repo", default="kyutai/moshika-mlx-q4", help="Hugging Face repo holding the Moshi MLX weights"
+    )
+    parser.add_argument(
+        "-q", "--quantized", choices=["4", "8", "bf16"], default="4", help="weight precision; must match the repo"
+    )
+    parser.add_argument("--max-minutes", type=float, default=10, help="maximum length of one conversation")
+    return parser.parse_args(argv)
+
+
+def main() -> None:
+    args = parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    runner = make_runner(args.backend, args.hf_repo, args.quantized, args.max_minutes)
+    app = build_app(runner, backend=args.backend)
+    log.info("open http://%s:%d in your browser (backend: %s)", args.host, args.port, args.backend)
     web.run_app(app, host=args.host, port=args.port, print=None)
 
 

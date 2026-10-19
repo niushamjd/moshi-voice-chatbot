@@ -1,0 +1,5 @@
+# What the running server needs with the echo backend. This is all the
+# Docker image installs; the model's Mac-only deps are in requirements.txt.
+aiohttp>=3.9
+sphn>=0.2
+numpy

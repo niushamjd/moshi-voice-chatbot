@@ -1,0 +1,6 @@
+# Cross-platform deps for the server (echo backend), tests and lint.
+# The real model's Mac-only deps are in requirements.txt.
+-r requirements-server.txt
+pytest>=8
+pytest-aiohttp>=1.0
+ruff>=0.6

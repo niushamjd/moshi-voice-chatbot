@@ -17,7 +17,7 @@ import json
 import logging
 import queue
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -83,9 +83,7 @@ class MoshiRunner:
         }[quantized]
 
         log.info("loading text tokenizer")
-        self._text_tokenizer = sentencepiece.SentencePieceProcessor(
-            hf_hub_download(hf_repo, TEXT_TOKENIZER_FILE)
-        )
+        self._text_tokenizer = sentencepiece.SentencePieceProcessor(hf_hub_download(hf_repo, TEXT_TOKENIZER_FILE))
 
         log.info("loading Moshi weights from %s/%s", hf_repo, model_file)
         mx.random.seed(299792458)

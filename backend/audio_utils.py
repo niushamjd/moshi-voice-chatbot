@@ -48,9 +48,6 @@ class PcmFramer:
             return []
         self._pending = np.concatenate((self._pending, pcm.astype(np.float32)))
         n_frames = self._pending.size // self.frame_size
-        frames = [
-            self._pending[i * self.frame_size : (i + 1) * self.frame_size]
-            for i in range(n_frames)
-        ]
+        frames = [self._pending[i * self.frame_size : (i + 1) * self.frame_size] for i in range(n_frames)]
         self._pending = self._pending[n_frames * self.frame_size :]
         return frames
