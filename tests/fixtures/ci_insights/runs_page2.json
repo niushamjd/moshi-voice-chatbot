@@ -1,0 +1,20 @@
+{
+  "total_count": 3,
+  "workflow_runs": [
+    {
+      "id": 103,
+      "name": "CI",
+      "head_branch": "feat/y",
+      "head_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "run_number": 3,
+      "created_at": "2026-10-19T12:00:00Z",
+      "run_started_at": "2026-10-19T12:00:00Z",
+      "updated_at": "2026-10-19T12:00:30Z",
+      "html_url": "https://github.com/niushamjd/moshi-voice-chatbot/actions/runs/103"
+    }
+  ]
+}

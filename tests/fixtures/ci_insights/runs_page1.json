@@ -1,0 +1,35 @@
+{
+  "total_count": 3,
+  "workflow_runs": [
+    {
+      "id": 101,
+      "name": "CI",
+      "head_branch": "main",
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "run_number": 1,
+      "created_at": "2026-10-19T10:00:00Z",
+      "run_started_at": "2026-10-19T10:00:00Z",
+      "updated_at": "2026-10-19T10:03:00Z",
+      "html_url": "https://github.com/niushamjd/moshi-voice-chatbot/actions/runs/101"
+    },
+    {
+      "id": 102,
+      "name": "CI",
+      "head_branch": "feat/x",
+      "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "run_number": 2,
+      "created_at": "2026-10-19T11:00:00Z",
+      "run_started_at": "2026-10-19T11:00:00Z",
+      "updated_at": "2026-10-19T11:02:00Z",
+      "html_url": "https://github.com/niushamjd/moshi-voice-chatbot/actions/runs/102"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "total_count": 3,
+  "artifacts": [
+    {
+      "id": 1001,
+      "name": "junit-py3.12",
+      "size_in_bytes": 1080,
+      "expired": false,
+      "archive_download_url": "https://api.github.com/repos/niushamjd/moshi-voice-chatbot/actions/artifacts/1001/zip",
+      "created_at": "2026-10-19T17:13:46Z"
+    },
+    {
+      "id": 1002,
+      "name": "junit-py3.13",
+      "size_in_bytes": 1080,
+      "expired": false,
+      "archive_download_url": "https://api.github.com/repos/niushamjd/moshi-voice-chatbot/actions/artifacts/1002/zip",
+      "created_at": "2026-10-19T17:13:46Z"
+    },
+    {
+      "id": 1003,
+      "name": "niushamjd~moshi-voice-chatbot~ABC123.dockerbuild",
+      "size_in_bytes": 1080,
+      "expired": false,
+      "archive_download_url": "https://api.github.com/repos/niushamjd/moshi-voice-chatbot/actions/artifacts/1003/zip",
+      "created_at": "2026-10-19T17:13:46Z"
+    }
+  ]
+}

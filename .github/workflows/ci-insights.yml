@@ -1,0 +1,46 @@
+name: CI insights
+
+on:
+  schedule:
+    - cron: "0 7 * * 1" # Mondays 07:00 UTC
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Number of recent runs to analyse
+        default: "50"
+      branch:
+        description: Only runs on this branch (empty for all)
+        default: ""
+
+permissions:
+  contents: read
+  actions: read # list runs and download their artifacts
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Completed runs never change, so keep their jobs, artifact lists and
+      # JUnit zips between weekly runs. Each run saves a new cache entry.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ci-insights
+          key: ci-insights-${{ github.run_id }}
+          restore-keys: ci-insights-
+
+      - name: Report
+        # An explicit `shell: bash` runs with -o pipefail, so a failing report
+        # fails the step instead of being hidden by `tee`.
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LIMIT: ${{ inputs.limit || '50' }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          python -m tools.ci_insights --repo "$GITHUB_REPOSITORY" --limit "$LIMIT" \
+            ${BRANCH:+--branch "$BRANCH"} --format markdown | tee -a "$GITHUB_STEP_SUMMARY"

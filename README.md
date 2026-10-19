@@ -85,6 +85,16 @@ kubectl -n moshi port-forward svc/moshi 8998:80      # then open http://localhos
 
 It runs one replica on purpose: each process handles one conversation, and scaling out would need session-sticky routing. CI validates the manifests with kubeconform and runs the same script plus the smoke test in a `k8s-e2e` job.
 
+### CI insights
+
+`tools/ci_insights` is a small stdlib-only CLI that reads this repo's GitHub Actions history (runs, jobs, and the `junit-*` test-report artifacts) and reports build success rate and durations (overall and per job), the most failing tests, flaky tests (passed and failed on the same commit) and the slowest tests:
+
+```bash
+GITHUB_TOKEN=... python -m tools.ci_insights --repo niushamjd/moshi-voice-chatbot --limit 50 [--branch main] [--format table|json|markdown]
+```
+
+It needs a token (`GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth token`) because GitHub only serves artifact downloads to authenticated requests. Completed runs are cached in `~/.cache/ci-insights/` (`--no-cache` to skip). The `CI insights` workflow runs it every Monday and on demand, and writes the report to the run summary.
+
 `GET /healthz` returns 200 with `{"status", "backend", "busy"}`, including during a conversation.
 
 `scripts/smoke_test.py` streams a WAV file to a running server in real time and checks what comes back:
