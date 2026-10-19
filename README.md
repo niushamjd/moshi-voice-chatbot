@@ -62,6 +62,17 @@ pytest                                    # unit + WebSocket integration tests
 ruff check . && ruff format --check .
 ```
 
+### Docker
+
+The image runs the echo backend (MLX needs Apple Silicon, so the model can't run in a container):
+
+```bash
+docker build -t moshi:local .
+docker run -p 8998:8998 moshi:local    # then open http://localhost:8998
+```
+
+CI builds it on every push and PR, smoke-tests the running container with `scripts/smoke_test.py`, and pushes it to `ghcr.io/niushamjd/moshi-voice-chatbot` only from `main` (`latest`, `sha-<short>`) and `v*` tags (semver).
+
 `GET /healthz` returns 200 with `{"status", "backend", "busy"}`, including during a conversation.
 
 `scripts/smoke_test.py` streams a WAV file to a running server in real time and checks what comes back:
