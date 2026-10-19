@@ -1,6 +1,32 @@
 # Moshi Voice Chatbot
 
+[![CI](https://github.com/niushamjd/moshi-voice-chatbot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/niushamjd/moshi-voice-chatbot/actions/workflows/ci.yml)
+[![CI insights](https://github.com/niushamjd/moshi-voice-chatbot/actions/workflows/ci-insights.yml/badge.svg)](https://github.com/niushamjd/moshi-voice-chatbot/actions/workflows/ci-insights.yml)
+[![Image](https://img.shields.io/badge/image-ghcr.io-blue?logo=docker)](https://github.com/niushamjd/moshi-voice-chatbot/pkgs/container/moshi-voice-chatbot)
+
 Real-time, full-duplex voice chat with [Kyutai's Moshi](https://github.com/kyutai-labs/moshi) running locally on Apple Silicon via MLX. You talk, Moshi listens and answers at the same time, and audio streams both ways over a WebSocket.
+
+## Platform / CI-CD
+
+The model needs Apple Silicon, but everything around it (server, wire protocol, browser client) also runs with an **echo backend** that sends your audio straight back. That is what CI, the Docker image and Kubernetes use. Every push and pull request is linted, tested on Python 3.12 and 3.13, built into a container that is smoke-tested over a real WebSocket, and deployed to a throwaway kind cluster and smoke-tested again. Merges to `main` publish the image to ghcr.io. A weekly job reports on the pipeline itself: build times, failing and flaky tests.
+
+```mermaid
+flowchart LR
+  push[push / PR] --> lint[lint<br/>ruff + kubeconform]
+  push --> test[pytest<br/>3.12 + 3.13]
+  lint --> docker[docker build<br/>+ container smoke test]
+  test --> docker
+  docker -->|main / v* tags only| ghcr[(ghcr.io)]
+  docker --> k8s[k8s-e2e<br/>kind + smoke test]
+  test -. JUnit artifacts .-> insights[ci-insights<br/>weekly report]
+```
+
+| | Where |
+|---|---|
+| Pipeline | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
+| Container | [`Dockerfile`](Dockerfile) (~200 MB, non-root, health check) |
+| Kubernetes | [`k8s/`](k8s/), [`scripts/kind-up.sh`](scripts/kind-up.sh) |
+| Pipeline report | [`tools/ci_insights/`](tools/ci_insights/), [`.github/workflows/ci-insights.yml`](.github/workflows/ci-insights.yml) |
 
 ## How it works
 
@@ -51,9 +77,9 @@ To run the same frontend against Kyutai's reference server instead:
 python -m moshi_mlx.local_web -q 4 --hf-repo kyutai/moshika-mlx-q4 --static frontend
 ```
 
-## Testing
+## Development
 
-Without a Mac or the model, run the server with the echo backend, which sends your audio straight back over the same protocol:
+Everything here runs on any OS with the echo backend; no model or Mac needed.
 
 ```bash
 pip install -r requirements-dev.txt
@@ -62,20 +88,27 @@ pytest                                    # unit + WebSocket integration tests
 ruff check . && ruff format --check .
 ```
 
-### Docker
+Tests live in `tests/`: `test_audio_utils.py` and `test_echo_runner.py` are unit tests, `test_server.py` runs the real aiohttp app over a WebSocket using the `make_client`, `send_audio` and `collect` fixtures from `conftest.py`, and `test_ci_insights.py` uses recorded GitHub API responses with the network blocked. Run one test with `pytest tests/test_server.py::test_healthz_reports_ok`. When CI fails, the job log shows the pytest output, and each test job uploads its JUnit report as the `junit-py<version>` artifact.
 
-The image runs the echo backend (MLX needs Apple Silicon, so the model can't run in a container):
+`GET /healthz` returns 200 with `{"status", "backend", "busy"}`, including during a conversation, so Kubernetes probes never restart a pod mid-call.
+
+`scripts/smoke_test.py` streams audio to a running server in real time and checks what comes back (time to first audio, real-time ratio, transcript). It sends silence by default, or a WAV:
+
+```bash
+say -o q.aiff "Hi Moshi, can you tell me about Paris?" && afconvert -f WAVE -d LEI16@24000 q.aiff q.wav
+python scripts/smoke_test.py --wav q.wav --seconds 15 --out reply.wav
+```
+
+### Docker
 
 ```bash
 docker build -t moshi:local .
 docker run -p 8998:8998 moshi:local    # then open http://localhost:8998
 ```
 
-CI builds it on every push and PR, smoke-tests the running container with `scripts/smoke_test.py`, and pushes it to `ghcr.io/niushamjd/moshi-voice-chatbot` only from `main` (`latest`, `sha-<short>`) and `v*` tags (semver).
+CI builds the image on every push and PR, smoke-tests the running container, and pushes `ghcr.io/niushamjd/moshi-voice-chatbot` only from `main` (`latest`, `sha-<short>`) and `v*` tags (semver).
 
 ### Kubernetes (kind)
-
-Manifests are in `k8s/` (namespace, Deployment with probes and a locked-down security context, ClusterIP Service). To run them on a local [kind](https://kind.sigs.k8s.io/) cluster:
 
 ```bash
 ./scripts/kind-up.sh                                 # create cluster, build, load, deploy (re-runnable)
@@ -83,37 +116,23 @@ kubectl -n moshi port-forward svc/moshi 8998:80      # then open http://localhos
 ./scripts/kind-down.sh                               # delete the cluster
 ```
 
-It runs one replica on purpose: each process handles one conversation, and scaling out would need session-sticky routing. CI validates the manifests with kubeconform and runs the same script plus the smoke test in a `k8s-e2e` job.
+`k8s/` has the namespace, a Deployment (probes on `/healthz`, resource limits, non-root, read-only filesystem, no capabilities) and a ClusterIP Service. `kind-up.sh` deploys a locally built image through a gitignored overlay, so the checked-in manifests never change.
 
 ### CI insights
 
-`tools/ci_insights` is a small stdlib-only CLI that reads this repo's GitHub Actions history (runs, jobs, and the `junit-*` test-report artifacts) and reports build success rate and durations (overall and per job), the most failing tests, flaky tests (passed and failed on the same commit) and the slowest tests:
+A small stdlib-only CLI that reads the repo's GitHub Actions runs, jobs and `junit-*` artifacts:
 
 ```bash
-GITHUB_TOKEN=... python -m tools.ci_insights --repo niushamjd/moshi-voice-chatbot --limit 50 [--branch main] [--format table|json|markdown]
+python -m tools.ci_insights --repo niushamjd/moshi-voice-chatbot [--limit 50] [--branch main] [--format table|json|markdown]
 ```
 
-It needs a token (`GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth token`) because GitHub only serves artifact downloads to authenticated requests. Completed runs are cached in `~/.cache/ci-insights/` (`--no-cache` to skip). The `CI insights` workflow runs it every Monday and on demand, and writes the report to the run summary.
-
-Example output (`--top 5`) on this repo, after a demo branch with one always-failing and one random test was pushed four times (it was never merged). The random test shows up as flaky on three commits, where it passed on one Python version and failed on the other:
+It needs a token (`GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth token`) because GitHub only serves artifacts to authenticated requests, and caches completed runs in `~/.cache/ci-insights/`. Excerpt from a real run, after a never-merged demo branch with one always-failing and one random test was pushed four times:
 
 ```
-ci-insights: niushamjd/moshi-voice-chatbot (ci.yml, branch: all)
-
-Builds
-------
-Metric                     Value
 Runs analysed              12
 Success rate               67%
-Conclusions                failure 4, success 8
 Duration median            2m 34s
-Duration p90               4m 37s
-Slowest run                5m 00s on fix/browser-url @ e612791 https://github.com/niushamjd/moshi-voice-chatbot/actions/runs/39287583697
-Runs without test reports  0
-Test executions            1184 (69 distinct tests)
 
-Median duration per job
------------------------
 Job          Median  Runs
 docker       41s     8
 k8s-e2e      1m 37s  4
@@ -121,37 +140,25 @@ lint         17s     12
 test (3.12)  18s     12
 test (3.13)  18s     12
 
-Most failing tests
-------------------
-Test                                              Failures  Runs  Failure rate
-tests.test_demo_failures::test_demo_always_fails  8         8     100%
-tests.test_demo_failures::test_demo_flaky         3         8     38%
-
 Flaky tests (passed and failed on the same commit)
---------------------------------------------------
 Test                                       Commits                    Failures  Runs
 tests.test_demo_failures::test_demo_flaky  01f4e2e, 51b4ba1, 9c1193f  3         8
-
-Slowest tests
--------------
-Test                                                                           Median  Runs
-tests.test_server::test_opus_round_trip_echoes_audio_and_text                  521ms   24
-tests.test_server::test_ignores_messages_it_does_not_understand[client-text]   517ms   24
-tests.test_server::test_ignores_messages_it_does_not_understand[empty]         517ms   24
-tests.test_server::test_ignores_messages_it_does_not_understand[unknown-kind]  517ms   24
-tests.test_ci_insights::test_cli_reports_errors_with_exit_code_2               200ms   12
 ```
 
-`GET /healthz` returns 200 with `{"status", "backend", "busy"}`, including during a conversation.
+## Design decisions
 
-`scripts/smoke_test.py` streams a WAV file to a running server in real time and checks what comes back:
+- **Echo backend in CI and containers.** MLX only runs on Apple Silicon, so the model can't run on Linux runners or in containers. The echo backend still exercises the server, protocol, Opus path and frontend. A CUDA image using Kyutai's PyTorch `moshi` package would be the way to run the real model in a cluster.
+- **One replica.** Each process handles one conversation over one long-lived WebSocket. Scaling out would need session-sticky routing.
+- **Push images only from `main` and tags.** PRs build and smoke-test the image but never publish it, so the registry only holds reviewed code.
+- **Stdlib-only ci-insights.** No dependencies to install in the weekly job or to keep updated.
 
-```bash
-say -o q.aiff "Hi Moshi, can you tell me about Paris?" && afconvert -f WAVE -d LEI16@24000 q.aiff q.wav
-python scripts/smoke_test.py --wav q.wav --seconds 15 --out reply.wav
-```
+## Troubleshooting
 
-It reports time to first audio, whether the server kept up with real time, and Moshi's transcript.
+- **"This browser does not support WebCodecs"**: open `http://localhost:8998`, not `http://0.0.0.0:8998`. Browsers only enable WebCodecs in secure contexts, and `0.0.0.0` isn't one.
+- **Pod crash-loops with `MOSHI_PORT must be a port number`**: Kubernetes injects `MOSHI_PORT=tcp://...` for a Service named `moshi`. The Deployment sets `enableServiceLinks: false` to prevent it.
+- **kind pod stuck in `ImagePullBackOff` with "no match for platform"**: the ghcr image is linux/amd64 only. On an Apple Silicon Mac use `scripts/kind-up.sh`, which builds and loads a native image.
+- **Image push fails in CI**: the `docker` job needs `packages: write` (set in the workflow), and the repo's Actions settings must allow workflows write access to packages.
+- **`kind-up.sh` rollout times out**: `kubectl -n moshi describe pods` and `kubectl -n moshi logs deploy/moshi --previous` show why. The `k8s-e2e` job prints both on failure.
 
 ## Model
 
